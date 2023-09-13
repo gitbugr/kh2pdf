@@ -1,0 +1,60 @@
+#!/usr/bin/env python
+
+import os
+import re
+import shutil
+from lupa import LuaRuntime
+import fitz
+import argparse
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='kh2pdf',
+        description='kh2pdf (KOReader Highlights to PDF) reads KOReader metadata files, extracts highlights and saves them to the PDF.'
+    )
+    parser.add_argument('file', help='The PDF file KOReader has highlights for.')
+    parser.add_argument('-m', '--metadata-file', help='The metadata file KOReader stores annotations in.')
+    args = parser.parse_args()
+
+    original_filepath = args.file
+    filepath = os.path.abspath(os.path.realpath(original_filepath))
+    metadata_filepath = args.metadata_file or re.sub(r'\.pdf$', '.sdr/metadata.pdf.lua', filepath if filepath else '')
+    print(f'Fetching annotations for file \'{filepath}\'')
+    if (filepath is None or os.path.exists(filepath) != True):
+        print('No file found')
+        exit(1)
+    if (filepath == metadata_filepath or os.path.exists(metadata_filepath) != True):
+        print('No metadata file found')
+        exit(1)
+
+    print('Copying backup of file')
+    shutil.copyfile(filepath, filepath + '.bak')
+
+    print('Extracting highlights from metadata and writing to PDF')
+    with fitz.open(filepath) as file:
+        with open(metadata_filepath, 'r') as metadata_file:
+            script = metadata_file.read().rstrip()
+            lua = LuaRuntime(unpack_returned_tuples=True)
+            metadata = lua.eval(re.sub(r'^(return |(--.*))', '', script, flags=re.M))
+            for page_number, page in enumerate(file):
+                text_instances = []
+                highlight_metadata = get_highlights_from_metadata(page_number, metadata)
+                for text in highlight_metadata:
+                    instances = page.search_for(text, flags=18, quads=True)
+                    annotation = page.add_highlight_annot(instances)
+                    annotation.set_colors(stroke=None)
+                    annotation.update()
+        print('Saving file')
+        file.save(filepath + '.new', garbage=4, deflate=True, clean=True)
+    os.remove(filepath)
+    os.rename(filepath + '.new', filepath)
+
+def get_highlights_from_metadata(page_number, metadata):
+    highlights = []
+    for _, bookmark in metadata['bookmarks'].items():
+        if bookmark['highlighted'] == True and bookmark['page'] - 1 == page_number:
+            highlights.append(bookmark['notes'])
+    return highlights
+
+if __name__ == '__main__':
+    main()
