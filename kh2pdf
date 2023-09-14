@@ -41,6 +41,8 @@ def main():
                 highlight_metadata = get_highlights_from_metadata(page_number, metadata)
                 for text in highlight_metadata:
                     instances = page.search_for(text, flags=18, quads=True)
+                    if len(instances) == 0:
+                        print(f'Could not find position of highlight with text "{text[:20]}..."')
                     annotation = page.add_highlight_annot(instances)
                     annotation.set_colors(stroke=None)
                     annotation.update()
