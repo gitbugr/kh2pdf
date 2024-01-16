@@ -40,4 +40,4 @@ pip install -r requirements.txt
 
 ### License
 
-MIT
+AGPL
